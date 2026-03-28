@@ -1,19 +1,18 @@
-venv/
 __pycache__/
 *.pyc
-*.pt
 *.h5
-*.pth
+*.pt
 models/
 data/
-data/Fall/
-data/No_Fall/
 *.mp4
 *.avi
 *.mov
 *.csv
 *.zip
+drive/
+sample_data/
 .vscode/
 .idea/
 .DS_Store
 
+print("✅ Git init & .gitignore hoàn tất!")
