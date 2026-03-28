@@ -1,62 +1,81 @@
-import cv2
 import numpy as np
 import os
 import tensorflow as tf
-from scr.pose_extractor import PoseExtractor
 from scr.model import create_lstm_model
 from tensorflow.keras.utils import to_categorical
 import shutil
+import pandas as pd
+
+def load_keypoints_from_csv(csv_path):
+    """
+    Load keypoints từ 1 file CSV
+    Returns: List of feature arrays (mỗi frame = 1 array 34 values)
+    """
+    try:
+        df = pd.read_csv(csv_path)
+        
+        # Chuyển DataFrame thành list of arrays
+        keypoints_list = df.values.tolist()
+        
+        print(f"   ✓ Loaded {os.path.basename(csv_path)}: {len(keypoints_list)} frames")
+        return keypoints_list
+    
+    except Exception as e:
+        print(f"   ✗ Error loading {csv_path}: {e}")
+        return None
+
 
 def load_and_process_dataset(data_dir='data', sequence_length=30):
     """
-    Load dataset từ cấu trúc mới:
+    Load dataset từ Keypoints_CSV (NHANH HƠN - KHÔNG CẦN EXTRACT)
     data/
     ├── Fall/
-    │   └── Raw_Video/
+    │   └── Keypoints_CSV/
     └── No_Fall/
-        └── Raw_Video/
+        └── Keypoints_CSV/
     """
-    pose_extractor = PoseExtractor()
-    
     all_keypoints = []
     all_labels = []
     
-    # Process FALL videos (Label = 1)
-    fall_dir = os.path.join(data_dir, 'Fall', 'Raw_Video')
-    if os.path.exists(fall_dir):
-        print(f"📂 Processing FALL videos from: {fall_dir}")
-        for video_file in os.listdir(fall_dir):
-            if video_file.endswith(('.mp4', '.avi', '.mov')):
-                print(f"  🎬 Processing: {video_file}")
-                video_path = os.path.join(fall_dir, video_file)
-                keypoints_seq = extract_keypoints_from_video(video_path, pose_extractor)
-                
-                # Label: 1 for fall
-                labels = [1] * len(keypoints_seq)
-                all_keypoints.extend(keypoints_seq)
+    # Process FALL keypoints (Label = 1)
+    fall_csv_dir = os.path.join(data_dir, 'Fall', 'Keypoints_CSV')
+    if os.path.exists(fall_csv_dir):
+        print(f"📂 Loading FALL keypoints from: {fall_csv_dir}")
+        csv_files = [f for f in os.listdir(fall_csv_dir) if f.endswith('.csv')]
+        print(f"   Found {len(csv_files)} CSV files")
+        
+        for csv_file in csv_files:
+            csv_path = os.path.join(fall_csv_dir, csv_file)
+            keypoints_data = load_keypoints_from_csv(csv_path)
+            
+            if keypoints_data is not None and len(keypoints_data) > 0:
+                labels = [1] * len(keypoints_data)
+                all_keypoints.extend(keypoints_data)
                 all_labels.extend(labels)
     else:
-        print(f"⚠️ Warning: Fall directory not found: {fall_dir}")
+        print(f"⚠️ Warning: Fall CSV directory not found: {fall_csv_dir}")
     
-    # Process NO_FALL videos (Label = 0)
-    normal_dir = os.path.join(data_dir, 'No_Fall', 'Raw_Video')
-    if os.path.exists(normal_dir):
-        print(f"📂 Processing NO_FALL videos from: {normal_dir}")
-        for video_file in os.listdir(normal_dir):
-            if video_file.endswith(('.mp4', '.avi', '.mov')):
-                print(f"  🎬 Processing: {video_file}")
-                video_path = os.path.join(normal_dir, video_file)
-                keypoints_seq = extract_keypoints_from_video(video_path, pose_extractor)
-                
-                # Label: 0 for normal
-                labels = [0] * len(keypoints_seq)
-                all_keypoints.extend(keypoints_seq)
+    # Process NO_FALL keypoints (Label = 0)
+    normal_csv_dir = os.path.join(data_dir, 'No_Fall', 'Keypoints_CSV')
+    if os.path.exists(normal_csv_dir):
+        print(f"📂 Loading NO_FALL keypoints from: {normal_csv_dir}")
+        csv_files = [f for f in os.listdir(normal_csv_dir) if f.endswith('.csv')]
+        print(f"   Found {len(csv_files)} CSV files")
+        
+        for csv_file in csv_files:
+            csv_path = os.path.join(normal_csv_dir, csv_file)
+            keypoints_data = load_keypoints_from_csv(csv_path)
+            
+            if keypoints_data is not None and len(keypoints_data) > 0:
+                labels = [0] * len(keypoints_data)
+                all_keypoints.extend(keypoints_data)
                 all_labels.extend(labels)
     else:
-        print(f"⚠️ Warning: No_Fall directory not found: {normal_dir}")
+        print(f"⚠️ Warning: No_Fall CSV directory not found: {normal_csv_dir}")
     
     if len(all_keypoints) == 0:
-        print("❌ ERROR: No videos found! Check your dataset structure.")
+        print("❌ ERROR: No keypoints found! Check your CSV files.")
+        print("💡 Make sure Keypoints_CSV folders contain .csv files")
         return None, None, None, None
     
     # Create sequences
@@ -82,28 +101,6 @@ def load_and_process_dataset(data_dir='data', sequence_length=30):
     
     return X_train, y_train, X_val, y_val
 
-def extract_keypoints_from_video(video_path, pose_extractor):
-    """
-    Extract keypoints from all frames in a video
-    """
-    cap = cv2.VideoCapture(video_path)
-    keypoints_list = []
-    frame_count = 0
-    
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
-        
-        keypoints = pose_extractor.extract(frame)
-        if keypoints is not None:
-            features = pose_extractor.keypoints_to_features(keypoints)
-            keypoints_list.append(features)
-            frame_count += 1
-    
-    cap.release()
-    print(f"    Extracted {frame_count} frames with keypoints")
-    return keypoints_list
 
 def prepare_sequences(keypoints_data, labels, sequence_length=30):
     """
@@ -119,9 +116,11 @@ def prepare_sequences(keypoints_data, labels, sequence_length=30):
     
     return np.array(X), np.array(y)
 
+
 if __name__ == "__main__":
     print("="*60)
     print("🚀 FALL DETECTION MODEL TRAINING")
+    print("📊 Using pre-extracted Keypoints (FAST!)")
     print("="*60)
     
     # Parameters
@@ -136,6 +135,10 @@ if __name__ == "__main__":
     
     if X_train is None:
         print("\n❌ Training aborted due to errors above.")
+        print("\n💡 Troubleshooting:")
+        print("   1. Check if data/Fall/Keypoints_CSV/ exists")
+        print("   2. Check if data/No_Fall/Keypoints_CSV/ exists")
+        print("   3. Make sure CSV files are present")
     else:
         # Train model
         print("\n" + "="*60)
